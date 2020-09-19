@@ -5,6 +5,7 @@ import utils.io.image
 import utils.np_image
 import os
 import matplotlib.pyplot as plt
+import nibabel as nib
 
 
 class DebugImageDataset(DatasetBase):
@@ -80,7 +81,14 @@ class DebugImageDataset(DatasetBase):
             return
 
         generators = entry_dict['generators']
+        imageToSavenp = generators['image'][0,:,:,:]
+        img = nib.Nifti1Image(imageToSavenp,None)
+        path = os.path.join(self.debug_image_folder,"testimage.nii.gz")
+        nib.save(img,path)
 
+        return
+
+        """        
         for key, value in generators.items():
             if not isinstance(value, np.ndarray):
                 continue
@@ -106,3 +114,6 @@ class DebugImageDataset(DatasetBase):
 
             self.save_debug_image(image, file_name)
 
+
+        
+        """

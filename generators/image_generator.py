@@ -16,6 +16,7 @@ class ImageGenerator(TransformationGeneratorBase):
                  post_processing_sitk=None,
                  post_processing_np=None,
                  interpolator='linear',
+                 context_disordering=False,
                  resample_sitk_pixel_type=None,
                  resample_default_pixel_value=None,
                  return_zeros_if_not_found=False,
@@ -68,6 +69,7 @@ class ImageGenerator(TransformationGeneratorBase):
         self.return_zeros_if_not_found = return_zeros_if_not_found
         self.np_pixel_type = np_pixel_type
         self.valid_output_sizes = valid_output_sizes
+        self.context_disordering = context_disordering
 
     def get_output_size(self, image):
         """
@@ -163,6 +165,68 @@ class ImageGenerator(TransformationGeneratorBase):
 
         return output_image_np
 
+    def pixelCommon(self,leftCorner1, leftCorner2, radius):
+        diffx = leftCorner1[0] - leftCorner2[0]
+        diffy = leftCorner1[1] - leftCorner2[1]
+        diffz = leftCorner1[2] - leftCorner2[2]
+        return (diffx * diffx + diffy * diffy + diffz * diffz < radius * radius)
+
+    def swapPatches(self,patch1_leftcorner, patch2_leftcorner, img_numpyarray, x, y, z):
+
+        for i in range(x):
+            for j in range(y):
+                for k in range(z):
+                    img_numpyarray[[patch1_leftcorner[0] + i, patch2_leftcorner[0] + i], [patch1_leftcorner[1] + j,patch2_leftcorner[1] + j], [patch1_leftcorner[2] + k, patch2_leftcorner[2] + k]] = \
+                        img_numpyarray[[patch2_leftcorner[0] + i, patch1_leftcorner[0] + i], [patch2_leftcorner[1] + j,patch1_leftcorner[1] + j], [patch2_leftcorner[2] + k, patch1_leftcorner[2] + k]]
+
+        return img_numpyarray
+
+    #ToDo(MG) determine the number of iterations and the dimensions of the patches
+    def disorder_context(self,img_numpyarray,iter=15,x=10,y=10,z=10):
+        print("function which disorders context of an image")
+        T = iter  # iterations of the shuffling algorithm
+
+        #resize to 96,128,128
+        img_numpyarray = img_numpyarray[0,:,:,:]
+
+        #expected shape should be 96,128,128
+        size = img_numpyarray.shape
+
+        for i in range(T):
+            # print("Iteration" + str(i))
+            # randomly select a 3D patch p1 (through choosing the left down corner)
+            patch1_leftcorner = (
+            np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
+            np.random.randint(0, size[2] - z))
+            # print(patch1_leftcorner)
+
+            # randomly select a 3D patch p2 (through choosing the left down corner)
+            patch2_leftcorner = (
+            np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
+            np.random.randint(0, size[2] - z))
+            # print(patch2_leftcorner)
+
+            # pick random until the matches do not overlap
+            while (self.pixelCommon(patch1_leftcorner, patch2_leftcorner, radius=x + 1)):
+                # randomly select a 3D patch  p1
+                patch1_leftcorner = (
+                np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
+                np.random.randint(0, size[2] - z))
+                # print(patch1_leftcorner)
+                # randomly select a 3D patch  p1
+                patch2_leftcorner = (
+                np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
+                np.random.randint(0, size[2] - z))
+                # print(patch2_leftcorner)
+
+            # print(patch1_leftcorner)
+            # print(patch2_leftcorner)
+            # swap the 2 patches
+            img_numpyarray = self.swapPatches(patch1_leftcorner, patch2_leftcorner, img_numpyarray, x, y, z)
+        #reshape back
+        img_numpyarray_reshaped_back = np.reshape(img_numpyarray,(1,96,128,128))
+        return img_numpyarray_reshaped_back
+
     def get(self, image, transformation, **kwargs):
         """
         Uses the sitk image and transformation to generate a resampled np array.
@@ -187,5 +251,8 @@ class ImageGenerator(TransformationGeneratorBase):
 
         if self.post_processing_np is not None:
             output_image_np = self.post_processing_np(output_image_np)
+
+        if self.context_disordering:
+            output_image_np = self.disorder_context(img_numpyarray=output_image_np)
 
         return output_image_np
