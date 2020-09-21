@@ -3,6 +3,8 @@ import numpy as np
 import utils.sitk_np
 from generators.transformation_generator_base import TransformationGeneratorBase
 from utils.sitk_image import resample
+import nibabel as nib
+import os
 
 
 class ImageGenerator(TransformationGeneratorBase):
@@ -182,8 +184,8 @@ class ImageGenerator(TransformationGeneratorBase):
         return img_numpyarray
 
     #ToDo(MG) determine the number of iterations and the dimensions of the patches
-    def disorder_context(self,img_numpyarray,iter=15,x=10,y=10,z=10):
-        print("function which disorders context of an image")
+    def disorder_context(self,img_numpyarray,iter=15,x=20,y=20,z=20):
+        #print("function which disorders context of an image")
         T = iter  # iterations of the shuffling algorithm
 
         #resize to 96,128,128
@@ -251,6 +253,14 @@ class ImageGenerator(TransformationGeneratorBase):
 
         if self.post_processing_np is not None:
             output_image_np = self.post_processing_np(output_image_np)
+
+        """
+        imageToSavenp = output_image_np[0, :, :, :]
+        img = nib.Nifti1Image(imageToSavenp, None)
+        path = os.path.join("/home/payer/training/debug_train", "before_processing.nii.gz")
+        nib.save(img, path)
+
+        """
 
         if self.context_disordering:
             output_image_np = self.disorder_context(img_numpyarray=output_image_np)

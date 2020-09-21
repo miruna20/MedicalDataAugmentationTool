@@ -21,6 +21,11 @@ def sigmoid_cross_entropy_with_logits(labels, logits, weights=None, data_format=
     else:
         return tf.reduce_mean(loss)
 
+def MSE(labels,logits,weights=None,data_format='channels_first'):
+    loss = tf.losses.mean_squared_error(labels = tf.cast(labels,tf.float32), predictions = tf.cast(logits,tf.float32))
+    #ToDo(MG) Do i have to apply also the reduce_mean_weighted or reduce_mean? what do they do?
+    return loss
+
 def generalized_dice_loss(labels, logits=None, logits_as_probability=None, data_format='channels_first', weights=None, weight_labels=True, squared=True, weight_epsilon=1e-08, epsilon=1e-08):
     """
     Taken from Generalised Dice overlap as a deep learning loss function for
