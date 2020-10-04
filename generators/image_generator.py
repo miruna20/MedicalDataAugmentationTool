@@ -5,6 +5,7 @@ from generators.transformation_generator_base import TransformationGeneratorBase
 from utils.sitk_image import resample
 import nibabel as nib
 import os
+import math
 
 
 class ImageGenerator(TransformationGeneratorBase):
@@ -19,6 +20,7 @@ class ImageGenerator(TransformationGeneratorBase):
                  post_processing_np=None,
                  interpolator='linear',
                  context_disordering=False,
+                 disordering_deterministic=False,
                  resample_sitk_pixel_type=None,
                  resample_default_pixel_value=None,
                  return_zeros_if_not_found=False,
@@ -72,6 +74,7 @@ class ImageGenerator(TransformationGeneratorBase):
         self.np_pixel_type = np_pixel_type
         self.valid_output_sizes = valid_output_sizes
         self.context_disordering = context_disordering
+        self.disordering_deterministic = disordering_deterministic
 
     def get_output_size(self, image):
         """
@@ -167,7 +170,7 @@ class ImageGenerator(TransformationGeneratorBase):
 
         return output_image_np
 
-    def pixelCommon(self,leftCorner1, leftCorner2, radius):
+    def pixelInCommon(self, leftCorner1, leftCorner2, radius):
         diffx = leftCorner1[0] - leftCorner2[0]
         diffy = leftCorner1[1] - leftCorner2[1]
         diffz = leftCorner1[2] - leftCorner2[2]
@@ -183,8 +186,20 @@ class ImageGenerator(TransformationGeneratorBase):
 
         return img_numpyarray
 
+    def collision(self, patch1, patchList, radius):
+        """
+        patch1: the first patch
+        patchList: list of patches already used for swapping
+        radius: the rasius which serves as threshold
+        return: True if there is collision between patch1 and each patch in the list, False otherwise
+        """
+        for patch2 in patchList:
+            if self.pixelInCommon(patch1, patch2, radius):
+                return True
+        return False
+
     #ToDo(MG) determine the number of iterations and the dimensions of the patches
-    def disorder_context(self,img_numpyarray,iter=15,x=20,y=20,z=20):
+    def disorder_context_random(self,img_numpyarray,iter=1,x=40,y=40,z=40):
         #print("function which disorders context of an image")
         T = iter  # iterations of the shuffling algorithm
 
@@ -194,39 +209,55 @@ class ImageGenerator(TransformationGeneratorBase):
         #expected shape should be 96,128,128
         size = img_numpyarray.shape
 
+        patchesList = []
         for i in range(T):
-            # print("Iteration" + str(i))
+
             # randomly select a 3D patch p1 (through choosing the left down corner)
-            patch1_leftcorner = (
-            np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
-            np.random.randint(0, size[2] - z))
-            # print(patch1_leftcorner)
+            patch1_leftcorner = (np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),np.random.randint(0, size[2] - z))
+            while (self.collision(patch1_leftcorner, patchesList, math.sqrt((x + 1) ** 2 + (y + 1) ** 2))):
+                patch1_leftcorner = (np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y), np.random.randint(0, size[2] - z))
+            patchesList.append(patch1_leftcorner)
 
             # randomly select a 3D patch p2 (through choosing the left down corner)
-            patch2_leftcorner = (
-            np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
-            np.random.randint(0, size[2] - z))
-            # print(patch2_leftcorner)
+            patch2_leftcorner = ( np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y), np.random.randint(0, size[2] - z))
+            while (self.collision(patch2_leftcorner, patchesList, math.sqrt((x + 1) ** 2 + (y + 1) ** 2))):
+                patch2_leftcorner = (np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y), np.random.randint(0, size[2] - z))
+            patchesList.append(patch2_leftcorner)
 
-            # pick random until the matches do not overlap
-            while (self.pixelCommon(patch1_leftcorner, patch2_leftcorner, radius=x + 1)):
-                # randomly select a 3D patch  p1
-                patch1_leftcorner = (
-                np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
-                np.random.randint(0, size[2] - z))
-                # print(patch1_leftcorner)
-                # randomly select a 3D patch  p1
-                patch2_leftcorner = (
-                np.random.randint(0, size[0] - x), np.random.randint(0, size[1] - y),
-                np.random.randint(0, size[2] - z))
-                # print(patch2_leftcorner)
-
-            # print(patch1_leftcorner)
-            # print(patch2_leftcorner)
             # swap the 2 patches
             img_numpyarray = self.swapPatches(patch1_leftcorner, patch2_leftcorner, img_numpyarray, x, y, z)
+
         #reshape back
         img_numpyarray_reshaped_back = np.reshape(img_numpyarray,(1,96,128,128))
+        return img_numpyarray_reshaped_back
+
+    def disorder_context_deterministic(self, img_numpyarray, patches, iter=1, x=40, y=40, z=40):
+        T = iter  # iterations of the shuffling algorithm
+
+        # resize to 96,128,128
+        img_numpyarray = img_numpyarray[0, :, :, :]
+
+        assert len(patches) == iter, "number of pair of patches not equal to number of disordering iterations"
+        patchList = []
+
+        #calculate the radius
+        radius = math.sqrt((x + 1) ** 2 + (y + 1) ** 2)
+
+        #iterate through the iterations and swap
+        for i in range(T):
+
+            #verify if collision between first patch from the tuple and the rest of the list
+            assert self.collision(patches[i][0],patchList,radius) == False
+            patchList.append(patches[i][0])
+
+            #verify if collision between second patch from the tuple and the rest of the list
+            assert self.collision(patches[i][1],patchList,radius) == False, "there is a collision between the given deterministic patches"
+            patchList.append(patches[i][1])
+
+            img_numpyarray = self.swapPatches(patches[i][0], patches[i][1], img_numpyarray, x, y, z)
+
+        # reshape back
+        img_numpyarray_reshaped_back = np.reshape(img_numpyarray, (1, 96, 128, 128))
         return img_numpyarray_reshaped_back
 
     def get(self, image, transformation, **kwargs):
@@ -263,6 +294,10 @@ class ImageGenerator(TransformationGeneratorBase):
         """
 
         if self.context_disordering:
-            output_image_np = self.disorder_context(img_numpyarray=output_image_np)
+            if self.disordering_deterministic:
+                output_image_np = self.disorder_context_deterministic(img_numpyarray=output_image_np, patches=[((20, 32, 32),(40, 80, 80))])
+            else:
+                output_image_np = self.disorder_context_random(img_numpyarray=output_image_np)
+
 
         return output_image_np

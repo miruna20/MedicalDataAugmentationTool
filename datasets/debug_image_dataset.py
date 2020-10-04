@@ -89,12 +89,11 @@ class DebugImageDataset(DatasetBase):
 
         return
 
-        """
-
         imageToSavenp = generators['labels'][0, :, :, :]
         img = nib.Nifti1Image(imageToSavenp, None)
         path = os.path.join(self.debug_image_folder, "testGT.nii.gz")
         nib.save(img, path)
+        """
 
         """
         print(entry_dict['id']['unique_id'])
@@ -105,13 +104,13 @@ class DebugImageDataset(DatasetBase):
         print("info about image")
         print(generators['image'].min())
         print(generators['image'].max())
-
-        """
-
+        
         imageToSavenp = generators['image'][0, :, :, :]
         img = nib.Nifti1Image(imageToSavenp, None)
         path = os.path.join(self.debug_image_folder, "testimage.nii.gz")
         nib.save(img, path)
+
+        """
 
 
         for key, value in generators.items():
